@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1a2e">
+<title>行测计时器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    background: #1a1a2e; color: #eee;
+    min-height: 100vh; display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    user-select: none;
+  }
+  .screen { display: none; flex-direction: column; flex: 1; padding: 16px; }
+  .screen.active { display: flex; }
+
+  h1 { font-size: 22px; text-align: center; margin: 20px 0 8px; }
+  .subtitle { text-align: center; color: #888; font-size: 13px; margin-bottom: 20px; }
+  .module-row {
+    display: flex; align-items: center; gap: 8px;
+    background: #252540; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+    position: relative;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+  }
+  .module-row.dragging {
+    opacity: 0.85; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 10; transition: none; background: #2e2e52;
+  }
+  .module-row .drag-handle {
+    color: #777; font-size: 20px; cursor: grab; padding: 0 2px;
+    touch-action: none;
+    user-select: none; flex-shrink: 0;
+  }
+  .module-row .drag-handle:active { cursor: grabbing; color: #4e9af1; }
+  .module-row input[type="text"] {
+    flex: 1; background: transparent; border: none; color: #eee; font-size: 15px; outline: none; min-width: 0;
+  }
+  .module-row input[type="number"] {
+    width: 56px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;
+    color: #eee; font-size: 15px; padding: 6px 8px; text-align: center; outline: none;
+  }
+  .module-row .unit { color: #888; font-size: 13px; }
+  .module-row .del {
+    background: none; border: none; color: #e74c3c; font-size: 20px; cursor: pointer; padding: 0 4px;
+  }
+  .btn {
+    border: none; border-radius: 10px; padding: 14px; font-size: 16px; font-weight: 600;
+    cursor: pointer; width: 100%; margin-top: 10px;
+  }
+  .btn-primary { background: #4e9af1; color: #fff; }
+  .btn-secondary { background: #252540; color: #aaa; }
+  .btn-small { padding: 10px; font-size: 14px; }
+  .total-info { text-align: center; color: #888; font-size: 14px; margin: 12px 0; }
+  .total-info b { color: #4e9af1; font-size: 18px; }
+
+  .run-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .run-header .exam-name { font-size: 14px; color: #888; }
+  .run-header .total-remain { font-size: 14px; color: #4e9af1; font-variant-numeric: tabular-nums; }
+  .current-module { text-align: center; font-size: 18px; color: #aaa; margin-top: 8px; }
+  .big-time {
+    text-align: center; font-size: 72px; font-weight: 700; font-variant-numeric: tabular-nums;
+    letter-spacing: 2px; margin: 4px 0; line-height: 1.1;
+  }
+  .big-time.warning { color: #f39c12; }
+  .big-time.overtime { color: #e74c3c; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.6; } }
+  .target-info { text-align: center; font-size: 14px; color: #666; margin-bottom: 20px; }
+  .controls { display: flex; gap: 10px; margin-top: 8px; }
+  .controls .btn { margin-top: 0; }
+  .btn-next { background: #27ae60; color: #fff; flex: 2; font-size: 18px; padding: 16px; }
+  .btn-pause { background: #252540; color: #aaa; flex: 1; }
+  .progress-bar { height: 6px; background: #252540; border-radius: 3px; margin: 16px 0; overflow: hidden; }
+  .progress-fill { height: 100%; background: #4e9af1; border-radius: 3px; transition: width 0.2s linear; }
+  .module-list { margin-top: 8px; overflow-y: auto; flex: 1; }
+  .ml-item {
+    display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 8px;
+    margin-bottom: 4px; font-size: 14px; color: #666; background: #20203a;
+  }
+  .ml-item.active { background: #252550; color: #4e9af1; font-weight: 600; }
+  .ml-item.done { color: #27ae60; opacity: 0.7; }
+  .ml-item .ml-time { font-variant-numeric: tabular-nums; }
+
+  .end-screen { justify-content: center; align-items: center; text-align: center; }
+  .end-screen h2 { font-size: 32px; margin-bottom: 8px; }
+  .end-screen p { color: #888; margin-bottom: 4px; font-size: 15px; }
+  .end-screen .summary { margin: 24px 0; width: 100%; max-width: 400px; }
+  .end-screen .summary-row {
+    display: flex; justify-content: space-between; padding: 8px 12px; font-size: 14px;
+    border-bottom: 1px solid #252540;
+  }
+  .end-screen .summary-row span:last-child { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<div class="screen active" id="screen-config">
+  <h1>行测计时器</h1>
+  <p class="subtitle">拖动 ☰ 调整模块顺序 · 设置每个模块的目标时长</p>
+  <div id="moduleConfigList"></div>
+  <button class="btn btn-secondary btn-small" id="btnAddModule">+ 添加模块</button>
+  <div class="total-info">总时长：<b id="totalDuration">--</b></div>
+  <button class="btn btn-primary" id="btnStart">开始考试</button>
+</div>
+
+<div class="screen" id="screen-run">
+  <div class="run-header">
+    <span class="exam-name">考试进行中</span>
+    <span class="total-remain">总剩余 <span id="totalRemain">--:--</span></span>
+  </div>
+  <div class="current-module" id="currentModuleName">--</div>
+  <div class="big-time" id="bigTime">--:--</div>
+  <div class="target-info" id="targetInfo">目标 --:--</div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  <div class="controls">
+    <button class="btn btn-pause" id="btnPause">暂停</button>
+    <button class="btn btn-next" id="btnNext">下一模块 →</button>
+  </div>
+  <div class="module-list" id="runModuleList"></div>
+</div>
+
+<div class="screen end-screen" id="screen-end">
+  <h2>考试结束</h2>
+  <p id="endReason">已全部完成</p>
+  <div class="summary" id="endSummary"></div>
+  <button class="btn btn-primary" id="btnRestart">返回配置</button>
+</div>
+
+<script>
+'use strict';
+
+const STORAGE_KEY = 'xingce_timer_config_v1';
+const DEFAULT_MODULES = [
+  { name: '常识判断', minutes: 5 },
+  { name: '言语理解', minutes: 15 },
+  { name: '判断推理', minutes: 10 },
+  { name: '数量关系', minutes: 10 },
+  { name: '资料分析', minutes: 10 },
+];
+const WARN_BEFORE_END = [10 * 60, 5 * 60];
+
+let modules = [];
+let state = null;
+let tickTimer = null;
+let wakeLock = null;
+let audioCtx = null;
+
+/* ===== 工具 ===== */
+function fmt(sec) {
+  const neg = sec < 0;
+  sec = Math.abs(Math.round(sec));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return (neg ? '-' : '') + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+function fmtLong(sec) {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  return h > 0 ? `${h}时${m}分` : `${m}分`;
+}
+function totalSeconds(mods) { return mods.reduce((a, m) => a + m.durationSec, 0); }
+
+/* ===== 配置页 ===== */
+const configList = document.getElementById('moduleConfigList');
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) {
+        modules = parsed.map(m => ({ name: m.name, durationSec: m.durationSec || (m.minutes * 60) }));
+        return;
+      }
+    }
+  } catch (e) {}
+  modules = DEFAULT_MODULES.map(m => ({ name: m.name, durationSec: m.minutes * 60 }));
+}
+function saveConfig() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(modules)); } catch (e) {}
+}
+function renderConfig() {
+  configList.innerHTML = '';
+  modules.forEach((m, i) => {
+    const row = document.createElement('div');
+    row.className = 'module-row';
+    row.dataset.index = i;
+
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.textContent = '☰';
+    handle.title = '拖动排序';
+    bindDragHandle(handle);
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = m.name;
+    nameInput.placeholder = '模块名称';
+    nameInput.addEventListener('input', () => { modules[i].name = nameInput.value; saveConfig(); });
+
+    const minInput = document.createElement('input');
+    minInput.type = 'number';
+    minInput.min = '0';
+    minInput.step = '1';
+    minInput.value = Math.round(m.durationSec / 60);
+    minInput.addEventListener('input', () => {
+      const v = Math.max(0, parseInt(minInput.value, 10) || 0);
+      modules[i].durationSec = v * 60;
+      saveConfig();
+      updateTotalDisplay();
+    });
+
+    const unit = document.createElement('span');
+    unit.className = 'unit';
+    unit.textContent = '分';
+
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '×';
+    del.addEventListener('click', () => {
+      if (modules.length <= 1) return;
+      modules.splice(i, 1);
+      saveConfig();
+      renderConfig();
+    });
+
+    row.append(handle, nameInput, minInput, unit, del);
+    configList.appendChild(row);
+  });
+  updateTotalDisplay();
+}
+function updateTotalDisplay() {
+  document.getElementById('totalDuration').textContent = fmtLong(totalSeconds(modules));
+}
+document.getElementById('btnAddModule').addEventListener('click', () => {
+  modules.push({ name: '新模块', durationSec: 10 * 60 });
+  saveConfig();
+  renderConfig();
+});
+
+/* ===== 拖拽排序（Pointer Events，触屏 + 鼠标） ===== */
+let dragCtx = null;
+
+function bindDragHandle(handle) {
+  handle.addEventListener('contextmenu', e => e.preventDefault());
+  handle.addEventListener('touchstart', e => { e.preventDefault(); }, { passive: false });
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const row = handle.closest('.module-row');
+    if (!row) return;
+
+    const rows = Array.from(configList.querySelectorAll('.module-row'));
+    const startIndex = rows.indexOf(row);
+    if (startIndex < 0) return;
+
+    const rect = row.getBoundingClientRect();
+    let rowHeight = rect.height + 8;
+    if (rows.length > 1) {
+      const other = rows[startIndex === 0 ? 1 : startIndex - 1];
+      rowHeight = Math.abs(other.getBoundingClientRect().top - rect.top);
+    }
+
+    dragCtx = {
+      row, handle, rows, startIndex,
+      currentIndex: startIndex,
+      startY: e.clientY,
+      pointerId: e.pointerId,
+      rowHeight,
+    };
+
+    row.classList.add('dragging');
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  });
+}
+
+function onPointerMove(e) {
+  if (!dragCtx) return;
+  e.preventDefault();
+
+  const { row, rows, startIndex, rowHeight } = dragCtx;
+  const dy = e.clientY - dragCtx.startY;
+  row.style.transform = `translateY(${dy}px)`;
+
+  let targetIndex = startIndex + Math.round(dy / rowHeight);
+  targetIndex = Math.max(0, Math.min(rows.length - 1, targetIndex));
+
+  if (targetIndex !== dragCtx.currentIndex) {
+    rows.forEach((r, idx) => {
+      if (r === row) return;
+      let shift = 0;
+      if (startIndex < targetIndex) {
+        if (idx > startIndex && idx <= targetIndex) shift = -rowHeight;
+      } else if (startIndex > targetIndex) {
+        if (idx >= targetIndex && idx < startIndex) shift = rowHeight;
+      }
+      r.style.transform = shift ? `translateY(${shift}px)` : '';
+    });
+    dragCtx.currentIndex = targetIndex;
+  }
+}
+
+function onPointerUp() {
+  if (!dragCtx) return;
+  const { row, handle, rows, startIndex, currentIndex, pointerId } = dragCtx;
+
+  try { handle.releasePointerCapture?.(pointerId); } catch (_) {}
+
+  row.classList.remove('dragging');
+  row.style.transform = '';
+  rows.forEach(r => { r.style.transform = ''; });
+
+  window.removeEventListener('pointermove', onPointerMove);
+  window.removeEventListener('pointerup', onPointerUp);
+  window.removeEventListener('pointercancel', onPointerUp);
+
+  if (startIndex !== currentIndex) {
+    const [moved] = modules.splice(startIndex, 1);
+    modules.splice(currentIndex, 0, moved);
+    saveConfig();
+    renderConfig();
+  }
+  dragCtx = null;
+}
+
+/* ===== 音频 ===== */
+function initAudio() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audioCtx = new AC();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx) {
+    const buf = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.start(0);
+  }
+}
+function beep(freq, durationMs, volume = 0.3) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + durationMs / 1000);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + durationMs / 1000);
+}
+function beepModuleEnd() { beep(880, 150, 0.35); setTimeout(() => beep(880, 150, 0.35), 200); }
+function beepWarning() { beep(520, 300, 0.3); }
+function beepExamEnd() {
+  beep(1046, 200, 0.4);
+  setTimeout(() => beep(1046, 200, 0.4), 280);
+  setTimeout(() => beep(1318, 350, 0.4), 560);
+}
+
+/* ===== 常亮 ===== */
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (e) {}
+}
+async function releaseWakeLock() {
+  if (wakeLock) { try { await wakeLock.release(); } catch (e) {} wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state && !state.paused && !state.finished) {
+    requestWakeLock();
+  }
+});
+
+/* ===== 计时核心 ===== */
+function currentModule() { return state.modules[state.currentIndex]; }
+
+function elapsedOfCurrentMs() {
+  if (!state) return 0;
+  const m = state.moduleState;
+  if (state.paused || m.segmentStartAt == null) return m.accumulatedMs;
+  return m.accumulatedMs + (Date.now() - m.segmentStartAt);
+}
+
+function totalElapsedMs() {
+  if (!state) return 0;
+  let sum = 0;
+  for (const r of state.moduleResults) sum += r.usedMs;
+  sum += elapsedOfCurrentMs();
+  return sum;
+}
+
+function startExam() {
+  const active = modules.filter(m => m.durationSec > 0);
+  if (!active.length) { alert('请至少设置一个时长大于 0 的模块'); return; }
+
+  initAudio();
+  state = {
+    modules: active,
+    currentIndex: 0,
+    moduleState: { accumulatedMs: 0, segmentStartAt: Date.now() },
+    paused: false,
+    finished: false,
+    warnedMarks: new Set(),
+    moduleResults: [],
+    _moduleEndNotified: false,
+    _autoSwitchAt: 0,
+  };
+  requestWakeLock();
+  switchScreen('run');
+  renderRunModuleList();
+  if (tickTimer) clearInterval(tickTimer);
+  tick();
+  tickTimer = setInterval(tick, 100);
+}
+
+function tick() {
+  if (!state || state.finished) return;
+
+  const mod = currentModule();
+  const elapsedMs = elapsedOfCurrentMs();
+  const elapsed = elapsedMs / 1000;
+  const remain = mod.durationSec - elapsed;
+  const totalDur = totalSeconds(state.modules);
+  const totalElapsed = totalElapsedMs() / 1000;
+  const totalRemain = totalDur - totalElapsed;
+
+  const bigEl = document.getElementById('bigTime');
+  bigEl.textContent = fmt(remain);
+  bigEl.className = 'big-time' + (remain < 0 ? ' overtime' : (remain <= 10 ? ' warning' : ''));
+
+  document.getElementById('currentModuleName').textContent =
+    `${state.currentIndex + 1}/${state.modules.length}  ${mod.name}`;
+  document.getElementById('targetInfo').textContent = `目标 ${fmt(mod.durationSec)}`;
+  document.getElementById('totalRemain').textContent = fmt(Math.max(0, totalRemain));
+
+  const pct = Math.max(0, Math.min(100, (elapsed / mod.durationSec) * 100));
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressFill').style.background = remain < 0 ? '#e74c3c' : '#4e9af1';
+
+  if (remain <= 0 && !state._moduleEndNotified) {
+    state._moduleEndNotified = true;
+    beepModuleEnd();
+    state._autoSwitchAt = Date.now() + 3000;
+  }
+
+  if (state._autoSwitchAt && Date.now() >= state._autoSwitchAt) {
+    state._autoSwitchAt = 0;
+    goNextModule(true);
+    return;
+  }
+
+  if (totalRemain <= 0) {
+    finishExam('时间到');
+    return;
+  }
+
+  for (const mark of WARN_BEFORE_END) {
+    if (totalRemain <= mark && totalRemain > 0 && !state.warnedMarks.has(mark)) {
+      state.warnedMarks.add(mark);
+      beepWarning();
+    }
+  }
+}
+
+function goNextModule(auto) {
+  if (!state || state.finished) return;
+
+  const mod = currentModule();
+  const usedMs = elapsedOfCurrentMs();
+  state.moduleResults.push({
+    name: mod.name,
+    target: mod.durationSec,
+    usedMs,
+    overtimeMs: Math.max(0, usedMs - mod.durationSec * 1000),
+  });
+
+  if (state.currentIndex >= state.modules.length - 1) {
+    finishExam('已全部完成');
+    return;
+  }
+
+  state.currentIndex++;
+  state.moduleState = { accumulatedMs: 0, segmentStartAt: state.paused ? null : Date.now() };
+  state._moduleEndNotified = false;
+  state._autoSwitchAt = 0;
+  renderRunModuleList();
+  tick();
+}
+
+function finishExam(reason) {
+  if (!state || state.finished) return;
+
+  if (state.moduleResults.length < state.modules.length) {
+    const mod = currentModule();
+    const usedMs = elapsedOfCurrentMs();
+    state.moduleResults.push({
+      name: mod.name,
+      target: mod.durationSec,
+      usedMs,
+      overtimeMs: Math.max(0, usedMs - mod.durationSec * 1000),
+    });
+  }
+
+  state.finished = true;
+  clearInterval(tickTimer);
+  tickTimer = null;
+  releaseWakeLock();
+  beepExamEnd();
+
+  document.getElementById('endReason').textContent = reason;
+  const summary = document.getElementById('endSummary');
+  summary.innerHTML = '';
+  state.moduleResults.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'summary-row';
+    const usedSec = r.usedMs / 1000;
+    const overSec = r.overtimeMs / 1000;
+    const over = overSec > 0 ? ` (超时 ${fmt(overSec).replace('-','')})` : '';
+    row.innerHTML = `<span>${r.name}</span><span>${fmt(usedSec)} / ${fmt(r.target)}${over}</span>`;
+    summary.appendChild(row);
+  });
+
+  switchScreen('end');
+}
+
+function togglePause() {
+  if (!state || state.finished) return;
+  const m = state.moduleState;
+
+  if (state.paused) {
+    m.segmentStartAt = Date.now();
+    state.paused = false;
+    document.getElementById('btnPause').textContent = '暂停';
+    requestWakeLock();
+  } else {
+    if (m.segmentStartAt != null) {
+      m.accumulatedMs += Date.now() - m.segmentStartAt;
+      m.segmentStartAt = null;
+    }
+    state.paused = true;
+    document.getElementById('btnPause').textContent = '继续';
+    releaseWakeLock();
+  }
+  tick();
+}
+
+function renderRunModuleList() {
+  const el = document.getElementById('runModuleList');
+  el.innerHTML = '';
+  state.modules.forEach((m, i) => {
+    const item = document.createElement('div');
+    item.className = 'ml-item' + (i === state.currentIndex ? ' active' : (i < state.currentIndex ? ' done' : ''));
+    let timeText;
+    if (i < state.currentIndex) {
+      const r = state.moduleResults[i];
+      timeText = r ? `实 ${fmt(r.usedMs / 1000)}` : '已完成';
+    } else {
+      timeText = `目标 ${fmt(m.durationSec)}`;
+    }
+    item.innerHTML = `<span>${m.name}</span><span class="ml-time">${timeText}</span>`;
+    el.appendChild(item);
+  });
+}
+
+/* ===== 界面切换 ===== */
+function switchScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+
+/* ===== 事件 ===== */
+document.getElementById('btnStart').addEventListener('click', startExam);
+document.getElementById('btnPause').addEventListener('click', togglePause);
+document.getElementById('btnNext').addEventListener('click', () => {
+  if (!state || state.finished) return;
+  state._autoSwitchAt = 0;
+  goNextModule(false);
+});
+document.getElementById('btnRestart').addEventListener('click', () => {
+  state = null;
+  switchScreen('config');
+});
+
+/* ===== 初始化 ===== */
+loadConfig();
+renderConfig();
+</script>
+</body>
+</html>
