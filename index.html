@@ -339,6 +339,9 @@ function initAudio() {
     if (AC) audioCtx = new AC();
   }
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  if (navigator.audioSession) {
+    navigator.audioSession.type = 'playback';
+  }
   if (audioCtx) {
     const buf = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
     const src = audioCtx.createBufferSource();
